@@ -96,38 +96,61 @@ def get_worms_from_scientific_name(tax_df, ordered_rank_columns, queue,full_tax_
 def get_worms_from_scientific_name_parallel(tax_df, ordered_rank_columns, full_tax_column="taxonomy",like=False, marine_only=False,full_tax_vI = False,n_proc=0):
     import multiprocess as mp
     import pandas as pd
+    import os
     
-    queue = mp.Queue()
+    # Use spawn method on Windows to avoid issues with forking
+    if os.name == 'nt':  # Windows
+        mp.set_start_method('spawn', force=True)
+    
     if n_proc == 0:
-    # create as many processes as there are CPUs on your machine
+        # create as many processes as there are CPUs on your machine
         num_processes = mp.cpu_count()
     else:
         num_processes = n_proc
-        
+    
     # calculate the chunk size as an integer
-    chunk_size = round(tax_df.shape[0]/num_processes)
-    procs = []
+    chunk_size = max(1, round(tax_df.shape[0]/num_processes))
+    
+    # Create chunks
     chunks = [tax_df.iloc[tax_df.index[i:i + chunk_size]] for i in range(0, tax_df.shape[0], chunk_size)]
+    
+    # Create a manager to handle the queue
+    manager = mp.Manager()
+    queue = manager.Queue()
+    
+    # Create and start processes
+    procs = []
     for chunk in chunks:
         proc = mp.Process(
             target=get_worms_from_scientific_name,
-            args=(chunk,ordered_rank_columns, queue,full_tax_column,like,marine_only,full_tax_vI)
+            args=(chunk, ordered_rank_columns, queue, full_tax_column, like, marine_only, full_tax_vI)
         )
         procs.append(proc)
         proc.start()
     
-    new_df = pd.DataFrame()
-    for _ in procs:
-        new_df = pd.concat([new_df,queue.get()])
+    # Collect results from the queue
+    results = []
+    for _ in range(len(procs)):
+        try:
+            results.append(queue.get(timeout=600))  # 10-minute timeout
+        except Exception as e:
+            print(f"Error getting results from queue: {e}")
     
-    #new_df = queue.get()
-    
+    # Wait for all processes to finish
     for proc in procs:
-        proc.join()
+        proc.join(timeout=10)  # 10-second timeout for joining
+        if proc.is_alive():
+            print(f"Warning: Process {proc.pid} did not terminate properly, forcing termination")
+            proc.terminate()
+    
+    # Combine results
+    new_df = pd.DataFrame()
+    for result in results:
+        new_df = pd.concat([new_df, result])
     
     return new_df
 
-def get_worms_from_aphiaid_or_name(tax_df, worms_dict,ordered_rank_columns, queue,full_tax_column="taxonomy", like=False, marine_only=False,full_tax_vI = False):
+def get_worms_from_aphiaid_or_name(tax_df, worms_dict, ordered_rank_columns, queue, full_tax_column="taxonomy", like=False, marine_only=False, full_tax_vI=False):
     
     import pyworms
     import multiprocess as mp
@@ -224,38 +247,61 @@ def get_worms_from_aphiaid_or_name(tax_df, worms_dict,ordered_rank_columns, queu
     queue.put(matches)
 
 
-def get_worms_from_aphiaid_or_name_parallel(tax_df, worms_dict,ordered_rank_columns, full_tax_column="taxonomy",like=False, marine_only=False,full_tax_vI = False,n_proc=0):
+def get_worms_from_aphiaid_or_name_parallel(tax_df, worms_dict, ordered_rank_columns, full_tax_column="taxonomy", like=False, marine_only=False, full_tax_vI=False, n_proc=0):
     
     import multiprocess as mp
     import pandas as pd
-
-    queue = mp.Queue()
+    import os
+    
+    # Use spawn method on Windows to avoid issues with forking
+    if os.name == 'nt':  # Windows
+        mp.set_start_method('spawn', force=True)
+    
     if n_proc == 0:
-    # create as many processes as there are CPUs on your machine
+        # create as many processes as there are CPUs on your machine
         num_processes = mp.cpu_count()
     else:
         num_processes = n_proc
-        
+    
     # calculate the chunk size as an integer
-    chunk_size = round(tax_df.shape[0]/num_processes)
-    procs = []
+    chunk_size = max(1, round(tax_df.shape[0]/num_processes))
+    
+    # Create chunks
     chunks = [tax_df.iloc[tax_df.index[i:i + chunk_size]] for i in range(0, tax_df.shape[0], chunk_size)]
+    
+    # Create a manager to handle the queue
+    manager = mp.Manager()
+    queue = manager.Queue()
+    
+    # Create and start processes
+    procs = []
     for chunk in chunks:
         proc = mp.Process(
             target=get_worms_from_aphiaid_or_name,
-            args=(chunk,worms_dict,ordered_rank_columns, queue,full_tax_column,like,marine_only,full_tax_vI)
+            args=(chunk, worms_dict, ordered_rank_columns, queue, full_tax_column, like, marine_only, full_tax_vI)
         )
         procs.append(proc)
         proc.start()
     
-    new_df = pd.DataFrame()
-    for _ in procs:
-        new_df = pd.concat([new_df,queue.get()])
+    # Collect results from the queue
+    results = []
+    for _ in range(len(procs)):
+        try:
+            results.append(queue.get(timeout=600))  # 10-minute timeout
+        except Exception as e:
+            print(f"Error getting results from queue: {e}")
     
-    #new_df = queue.get()
-    
+    # Wait for all processes to finish
     for proc in procs:
-        proc.join()
+        proc.join(timeout=10)  # 10-second timeout for joining
+        if proc.is_alive():
+            print(f"Warning: Process {proc.pid} did not terminate properly, forcing termination")
+            proc.terminate()
+    
+    # Combine results
+    new_df = pd.DataFrame()
+    for result in results:
+        new_df = pd.concat([new_df, result])
     
     return new_df
 

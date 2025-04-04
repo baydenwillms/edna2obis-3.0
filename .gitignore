@@ -127,3 +127,7 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# Processed directory - ignore all files except .zip
+processed/*
+!processed/*.zip
